@@ -1,0 +1,171 @@
+---
+title: "MATH404 24/25 R Assessment"
+author: "David Hofmeyr"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Overview
+
+In this R coursework, you will perform data analysis and prediction using models and methods presented in the module MATH404. All datasets required to do the data analysis are found in the designated folder on Moodle.
+
+_The number of points for each question is indicated in square brackets, e.g. [2] corresponds to two marks. There are 100 marks in total._
+
+You should load any libraries which you use in your solutions in the R chunk below. I have added caret, since it is very likely you will be using this package for data splitting and model selection tasks, however it is up to you if you prefer an alternative.
+
+```{r}
+library(caret)
+# library(<my required library 1>)
+# library(<my required library 2>)
+# ...
+```
+
+### Submission
+
+Your solutions should be written up in this Rmd document and submitted online via Moodle prior to the deadline. When reading data, e.g. from a .csv file, your code should assume the Rmd document is being run from the folder containing that data. You should make efforts to comment your code where appropriate.
+
+Please use the sections indicated by ANS: ____ whenever you wish to add written answers, or when it is indicated in the question that you need to do so. Please use underscore tags, e.g. `_your text_`, to make your answers in italic style so I can easily distinguish them from the questions. You may split your answers to questions into multiple parts, where appropriate, alternating between code chunks and pieces of written text.
+
+_At the top of each chunk containing code which uses random number generation (e.g., data splitting, cross-validation, fitting bagging and boosting models or models with randomised initialisations) you should set the seed equal to your student number, using set.seed( < insert your student number here > ), to ensure reproducibility of your solutions._
+
+## Part 1 - Health and Diabetes
+
+Load the data found in `Health.RData` using `load("yourdirectory/Health.RData")` where you replace `yourdirectory` with the directory where you have saved the data file. This is a subset of the `CDC Diabetes Health Indicators` data set taken from the UCI Machine Learning Repository. The data contain biometric and lifestyle information related to 1400 individuals from the USA, as well as binary indicator variables specifying whether they have type II diabetes, whether they have experienced a heart attack (or heart disease) and whether they have suffered a stroke. The variables in the data are:
+
+- Diabetes_binary: binary indicator for (diagnosed) type II diabetes
+- HighBP: binary indicator for (diagnosed) hypertension
+- HighChol: binary indicator for (diagnosed) high cholesterol
+- CholCheck: binary indicator for whether the individual has had their cholesterol checked within the preceding five years
+- BMI: Body Mass Index
+- Smoker: Binary indicator for whether the individual has smoked more than 100 cigarettes (total) in their life
+- Stroke: Binary indicator for whether the individual has ever suffered a stroke
+- HeartDiseaseorAttack: Binary indicator for whether the individual has a diagnosed heart condition or has ever suffered a heart attack
+- PhysActivity: Binary indicator for whether the individual has engaged in any physical activity (exercise) in the preceding 30 days
+- Fruits: Binary indicator for whether the individual eats fruit daily
+- Veggies: As above but for vegetables
+- HvyAlcoholConsump: Binary indicator for whether the individual consumes more than 14 units of alcohol per week if male, or 7 units per week if female
+- AnyHealthcare: Binary indicator for whether the individual has health insurance of any form
+- NoDocbcCost: Binary indicator for whether the individual needed to see a doctor in the previous year but could not because of cost
+- GenHlth: Self reported general health status (1 = excellent to 5 = poor)
+- MentHlth: Self reported number of days among the preceding 30 on which the individual experienced difficulties with mental health
+- PhysHlth: Self reported number of days among the preceding 30 on which the individual's physical health was not good (e.g. due to illness or injury)
+- DiffWalk: binary indicator for whether the individual experiences difficulty walking or climbing stairs
+- Sex: the sex (at birth) of the individual, 0 = female, 1 = male
+- Age: age category of (roughly) 5 year intervals, starting at 1 = 18-24 and ending at 13 = 80 or older
+- Education: education category, 1 = no school, 2 = elementary school, 3 = some high school, 4 = high school graduate, 5 = some college/university, 6 = college/university graduate
+- Income: income category starting from 1 = < $10000 - - 5 = < $35 000, - - 8 = > $75 000
+
+### Question 1 (32 Marks)
+
+1.a) Fit an appropriate generalised linear model to help identify key relationships between type II diabetes and the various health, biometric and lifestyle factors. You do not need to do any variable or model selection at this stage. _[8]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _my answer_
+
+1.b) Using this model, how would you interpret the relationship between high blood pressure and type II diabetes? _[5]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+1.c) Consider patient0 (this is a potential member of the population, and an R object with the name "patient0" will have been loaded into your R environment when loading the data). Using your model, estimate the probability that such an individual has type II diabetes. _[3]_
+
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+1.d) Estimate the probability that an individual with the same characteristics as patient0, except that they do not have high blood pressure, has type II diabetes. For full credit, determine this probability using only the answers to the previous two questions. _[4]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+1.e) Fit a second generalised linear model to predict the presence of type II diabetes, but include only the covariates deemed to be ``significant'' in your first model, at the 5% level. _[6]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+1.f) Compare the AIC values for the two models fit so far. What do you conclude? Comment on the appropriateness/inappropriateness of this comparison. _[6]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+### Question 2 (15 marks)
+
+2.a) Fit another model (other than a generalised linear model) which you can use to identify key relationships between the various health, biometric and lifestyle factors and type II diabetes. This should include appropriate model selection. Comment briefly on your findings, in comparison with what you observed in Question 1 above. _[15]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+### Question 3 (36 marks)
+
+3.a) Fit a model which can be used to accurately predict the presence/absence of type II diabetes. You should reserve 30% of the data for testing purposes, and the remaining 70% should be used for training and model selection. _[12]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+3.b) Report the estimated classification performance of the model fit in Question 3.a) as you feel is appropriate. Comment on your findings. _[5]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+3.c) Given that type II diabetes can be very damaging (especially if left untreated), and that it is not contagious, fit a further model which you believe appropriately captures the relative importance of falsely predicting the presence of diabetes when it IS NOT present and falsely predicting the absence of diabetes when it IS present. You should include all steps taken in selecting a model in your answer. _[14]_
+
+```{r}
+## ANSWER HERE:
+
+```
+
+ANS HERE: _____
+
+3.d) Report the estimated performance of the model fit in Question 3.c) as you feel is appropriate. Comment on your findings, in relation to your findings in 3.b). _[5]_ 
+
+## Part 2: High Dimensional Regression
+
+Load the data found in `Genes.RData`. This is a simulation based modification of the `Khan Gene Data` included in the ISLR2 package.
+
+There is a total of 2308 covariates related to gene expression measurements associated with cancerous tumour tissues, and a response variable (y) derived from information related to cancer type which can be treated as continuous.
+
+### Question 1 (17 Marks)
+
+1.a) Fit a linear model to the Genes data set which you believe is as accurate as possible for predicting the response variable, but is only allowed to include at most 100 non-zero coefficients (101 if you include an intercept term). You should again first set aside 30% of the data for testing purposes, and use the remaining 70% for training and model selection. _[13]_
+
+1.b) Report the estimated accuracy of the model as you believe is most appropriate. _[4]_
