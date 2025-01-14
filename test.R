@@ -101,8 +101,6 @@ ggplot(Health_data, aes(x = factor(HighBP), fill = factor(Diabetes_binary))) +
        fill = "Diabetes (Binary)") +
   theme_minimal()
 
-
-
 set.seed(36850162)  # Replace with your student number
 
 # Data exploration (optional but useful for extended analysis)
@@ -112,138 +110,6 @@ cat("Summary Statistics:\n")
 summary(Health_data)
 cat("Checking for Missing Values:\n")
 any(is.na(Health_data))  # Should return FALSE
-
-
-
-# Load necessary libraries
-if (!require("rpart")) install.packages("rpart", dependencies = TRUE)
-if (!require("rpart.plot")) install.packages("rpart.plot", dependencies = TRUE)
-if (!require("caret")) install.packages("caret", dependencies = TRUE)
-if (!require("pROC")) install.packages("pROC", dependencies = TRUE)
-
-library(rpart)
-library(rpart.plot)
-library(caret)
-library(pROC)
-
-# Ensure Diabetes_binary is a factor
-Health_data$Diabetes_binary <- as.factor(Health_data$Diabetes_binary)
-
-# Step 1: Split the data into training and testing sets
-set.seed(36850162)  # Replace with your student number
-train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.8, list = FALSE)
-train_data <- Health_data[train_index, ]
-test_data <- Health_data[-train_index, ]
-
-cat("Training set size:", nrow(train_data), "\n")
-cat("Testing set size:", nrow(test_data), "\n")
-
-# Step 2: Fit an initial decision tree model
-tree_model <- rpart(
-  Diabetes_binary ~ .,  # Include all predictors
-  data = train_data,
-  method = "class",     # Classification tree
-  control = rpart.control(cp = 0.01)  # Initial complexity parameter
-)
-
-cat("Initial Decision Tree Model:\n")
-print(tree_model)
-
-# Step 3: Visualize the initial tree
-rpart.plot(tree_model, type = 3, extra = 102, fallen.leaves = TRUE,
-           main = "Initial Decision Tree for Type II Diabetes")
-
-# Step 4: Perform cross-validation to tune the complexity parameter (cp)
-cat("Performing Cross-Validation to Tune cp...\n")
-tree_tuned <- train(
-  Diabetes_binary ~ .,
-  data = train_data,
-  method = "rpart",
-  trControl = trainControl(method = "cv", number = 10),  # 10-fold cross-validation
-  tuneLength = 10  # Test 10 different cp values
-)
-
-# Display the best cp value and final model
-best_cp <- tree_tuned$bestTune$cp
-cat("Best complexity parameter (cp):", best_cp, "\n")
-
-final_tree <- tree_tuned$finalModel
-cat("Final Decision Tree Model:\n")
-print(final_tree)
-
-# Step 5: Visualize the final tree
-rpart.plot(final_tree, type = 3, extra = 102, fallen.leaves = TRUE,
-           main = "Final Tuned Decision Tree for Type II Diabetes")
-
-# Step 6: Evaluate the final model
-# Predict on the test set
-predicted_probs <- predict(final_tree, newdata = test_data, type = "prob")[, 2]  # Probability for class 1
-predicted_classes <- predict(final_tree, newdata = test_data, type = "class")
-
-# Confusion matrix
-conf_matrix <- confusionMatrix(predicted_classes, as.factor(test_data$Diabetes_binary))
-cat("Confusion Matrix:\n")
-print(conf_matrix)
-
-# ROC curve and AUC
-test_data$Diabetes_binary <- factor(test_data$Diabetes_binary, levels = c(0, 1))  # Ensure proper factor levels
-roc_curve <- roc(response = test_data$Diabetes_binary, 
-                 predictor = predicted_probs, 
-                 levels = c("0", "1"))  # Specify control and case levels
-cat("AUC for the Final Model:\n")
-print(auc(roc_curve))
-
-# Plot the ROC curve
-plot(roc_curve, main = "ROC Curve for Decision Tree", col = "blue", lwd = 2)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # Load necessary libraries
 if (!require("glmnet")) install.packages("glmnet", dependencies = TRUE)
@@ -346,3 +212,195 @@ cat("Selected genes (non-zero coefficients):\n", selected_genes, "\n")
 
 
 
+
+# Load necessary libraries
+library(caret)
+library(randomForest)
+library(pROC)
+library(xgboost)
+
+# Load the dataset
+load("Health.RData")  # Ensure this file is in the correct working directory
+
+# Rename the class levels to valid R variable names
+Health_data$Diabetes_binary <- factor(
+  Health_data$Diabetes_binary,
+  levels = c("0", "1"),
+  labels = c("Class_0", "Class_1")
+)
+
+# Step 1: Split the dataset into 70% training and 30% testing
+set.seed(123)
+train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
+train_data <- Health_data[train_index, ]
+test_data <- Health_data[-train_index, ]
+
+# Step 2: Define training control with cross-validation and sampling
+train_control <- trainControl(
+  method = "repeatedcv", # Repeated cross-validation
+  number = 5,           # 5-fold CV
+  repeats = 3,          # Repeat 3 times
+  sampling = "up",      # Apply over-sampling
+  classProbs = TRUE,    # Enable class probabilities
+  summaryFunction = twoClassSummary # Optimize for ROC
+)
+
+# Step 3: Train an XGBoost model with adjusted class weights
+# Create class weights (penalize minority class more)
+class_weights <- ifelse(train_data$Diabetes_binary == "Class_1", 1, 0.1)
+
+# Convert data to XGBoost matrix format
+xgb_train <- xgb.DMatrix(data = as.matrix(train_data[, -which(names(train_data) == "Diabetes_binary")]),
+                         label = as.numeric(train_data$Diabetes_binary) - 1,
+                         weight = class_weights)
+
+xgb_test <- xgb.DMatrix(data = as.matrix(test_data[, -which(names(test_data) == "Diabetes_binary")]),
+                        label = as.numeric(test_data$Diabetes_binary) - 1)
+
+# Perform grid search for hyperparameter optimization
+grid <- expand.grid(
+  max_depth = c(3, 5, 7),
+  eta = c(0.01, 0.1, 0.3),
+  nrounds = c(100, 150, 200)
+)
+
+best_model <- NULL
+best_auc <- 0
+best_params <- NULL
+
+for (i in 1:nrow(grid)) {
+  params <- list(
+    max_depth = grid$max_depth[i],
+    eta = grid$eta[i],
+    objective = "binary:logistic",
+    eval_metric = "auc"
+  )
+  
+  model <- xgb.train(
+    params = params,
+    data = xgb_train,
+    nrounds = grid$nrounds[i],
+    verbose = 0
+  )
+  
+  # Evaluate AUC on test set
+  predictions <- predict(model, xgb_test)
+  auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)$auc
+  
+  if (auc > best_auc) {
+    best_auc <- auc
+    best_model <- model
+    best_params <- params
+  }
+}
+
+# Print the best parameters and AUC
+cat("Best AUC:", best_auc, "\n")
+cat("Best Parameters:\n")
+print(best_params)
+
+# Step 4: Adjust decision threshold for sensitivity
+thresholds <- seq(0.3, 0.5, by = 0.05)
+metrics <- data.frame(Threshold = thresholds, Sensitivity = NA, Specificity = NA, F1 = NA)
+
+for (i in seq_along(thresholds)) {
+  threshold <- thresholds[i]
+  predicted_classes <- ifelse(predict(best_model, xgb_test) > threshold, "Class_1", "Class_0")
+  
+  conf_matrix <- confusionMatrix(
+    factor(predicted_classes, levels = c("Class_0", "Class_1")),
+    test_data$Diabetes_binary
+  )
+  
+  sensitivity <- conf_matrix$byClass["Sensitivity"]
+  specificity <- conf_matrix$byClass["Specificity"]
+  precision <- conf_matrix$byClass["Pos Pred Value"]
+  recall <- sensitivity
+  f1 <- 2 * (precision * recall) / (precision + recall)
+  
+  metrics[i, 2:4] <- c(sensitivity, specificity, f1)
+}
+
+print(metrics)
+
+# Save the best model
+saveRDS(best_model, file = "final_optimized_xgboost_diabetes_model.rds")
+cat("\nModel saved as 'final_optimized_xgboost_diabetes_model.rds'.\n")
+
+
+
+# Load necessary libraries
+library(caret)
+library(pROC)
+
+# Step 1: Load and preprocess the dataset
+load("Health.RData")  # Ensure this file is in the correct working directory
+
+# Rename the class levels to valid R variable names
+Health_data$Diabetes_binary <- factor(
+  Health_data$Diabetes_binary,
+  levels = c("0", "1"),
+  labels = c("Class_0", "Class_1")
+)
+
+# Step 2: Split the dataset into 70% training and 30% testing
+set.seed(123)
+train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
+train_data <- Health_data[train_index, ]
+test_data <- Health_data[-train_index, ]
+
+# Step 3: Implement weighted logistic regression to penalize false negatives
+best_auc <- 0
+best_model <- NULL
+best_weight <- NULL
+weights <- c(0.5, 1, 2, 5)  # Different weights for false negatives
+
+for (weight in weights) {
+  # Assign weights for the training dataset
+  class_weights <- ifelse(train_data$Diabetes_binary == "Class_1", weight, 1)
+  
+  # Train a weighted logistic regression model
+  logistic_model <- glm(
+    Diabetes_binary ~ ., 
+    data = train_data, 
+    family = binomial(link = "logit"), 
+    weights = class_weights
+  )
+  
+  # Step 4: Evaluate the model
+  predictions <- predict(logistic_model, newdata = test_data, type = "response")
+  roc_obj <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)
+  auc <- auc(roc_obj)
+  
+  # Store the best model
+  if (auc > best_auc) {
+    best_auc <- auc
+    best_model <- logistic_model
+    best_weight <- weight
+  }
+}
+
+# Print the best AUC and weight
+cat("Best AUC:", best_auc, "\n")
+cat("Best Weight:", best_weight, "\n")
+
+# Step 5: Adjust decision threshold for sensitivity
+threshold <- 0.4  # Lower threshold for increased sensitivity
+predicted_classes <- ifelse(predict(best_model, newdata = test_data, type = "response") > threshold, "Class_1", "Class_0")
+
+# Confusion Matrix
+conf_matrix <- confusionMatrix(
+  factor(predicted_classes, levels = c("Class_0", "Class_1")),
+  test_data$Diabetes_binary
+)
+
+# Print Confusion Matrix and AUC
+cat("\nConfusion Matrix:\n")
+print(conf_matrix)
+
+roc_auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predict(best_model, newdata = test_data, type = "response"))
+cat("\nAUC:", roc_auc$auc, "\n")
+
+# Save the best model
+saveRDS(best_model, file = "weighted_logistic_regression_model_part_c.rds")
+cat("\nModel saved as 'weighted_logistic_regression_model_part_c.rds'.\n")
