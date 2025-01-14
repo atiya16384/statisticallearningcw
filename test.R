@@ -196,3 +196,153 @@ print(auc(roc_curve))
 # Plot the ROC curve
 plot(roc_curve, main = "ROC Curve for Decision Tree", col = "blue", lwd = 2)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Load necessary libraries
+if (!require("glmnet")) install.packages("glmnet", dependencies = TRUE)
+if (!require("caret")) install.packages("caret", dependencies = TRUE)
+if (!require("dplyr")) install.packages("dplyr", dependencies = TRUE)
+
+library(glmnet)
+library(caret)
+library(dplyr)
+
+# Load the Genes data
+load("Genes.RData")
+
+# Extract response variable and covariates
+response_variable <- Genes$y
+covariates <- Genes
+covariates$y <- NULL  # Remove the response variable
+
+# Convert covariates to a matrix (required for glmnet)
+covariates_matrix <- as.matrix(covariates)
+
+# Split the data into training (70%) and testing (30%)
+set.seed(123)  # For reproducibility
+train_indices <- createDataPartition(response_variable, p = 0.7, list = FALSE)
+
+training_covariates <- covariates_matrix[train_indices, ]
+testing_covariates <- covariates_matrix[-train_indices, ]
+training_response <- response_variable[train_indices]
+testing_response <- response_variable[-train_indices]
+
+# Standardize covariates for glmnet
+training_covariates <- scale(training_covariates)
+testing_covariates <- scale(testing_covariates, center = attr(training_covariates, "scaled:center"),
+                            scale = attr(training_covariates, "scaled:scale"))
+
+# Add polynomial features using the model.matrix approach
+add_polynomial_features <- function(data, degree) {
+  poly_features <- data
+  for (d in 2:degree) {
+    poly_features <- cbind(poly_features, data^d)
+  }
+  colnames(poly_features) <- paste0("X", seq_len(ncol(poly_features)))
+  return(poly_features)
+}
+
+poly_train <- add_polynomial_features(training_covariates, degree = 2)
+poly_test <- add_polynomial_features(testing_covariates, degree = 2)
+
+# Grid Search for Alpha and Lambda
+set.seed(123)
+alpha_values <- seq(0.1, 1, by = 0.05)
+cv_results <- data.frame()
+
+for (alpha in alpha_values) {
+  elastic_net_cv <- cv.glmnet(poly_train, training_response, alpha = alpha, nfolds = 10)
+  lambda_sequence <- elastic_net_cv$lambda
+  
+  for (lambda in lambda_sequence) {
+    coef_path <- predict(elastic_net_cv, type = "coefficients", s = lambda)
+    non_zero_coefficients <- sum(coef_path != 0)
+    
+    if (non_zero_coefficients <= 100) {
+      predictions <- predict(elastic_net_cv, s = lambda, newx = poly_test)
+      mse <- mean((predictions - testing_response)^2)
+      r_squared <- 1 - sum((predictions - testing_response)^2) /
+        sum((testing_response - mean(testing_response))^2)
+      cv_results <- rbind(cv_results, data.frame(Alpha = alpha, Lambda = lambda, MSE = mse, R2 = r_squared, NonZero = non_zero_coefficients))
+    }
+  }
+}
+
+# Select the best combination of alpha and lambda
+best_result <- cv_results[which.min(cv_results$MSE), ]
+best_alpha <- best_result$Alpha
+best_lambda <- best_result$Lambda
+
+# Fit the final model with the best alpha and lambda
+final_elastic_net_model <- glmnet(poly_train, training_response, alpha = best_alpha, lambda = best_lambda)
+
+# Predictions on the test set
+predictions <- predict(final_elastic_net_model, newx = poly_test)
+
+# Evaluate the model
+mse <- mean((predictions - testing_response)^2)
+sst <- sum((testing_response - mean(testing_response))^2)
+ssr <- sum((predictions - testing_response)^2)
+r_squared <- 1 - (ssr / sst)
+
+# Print results
+cat("Best Alpha:", best_alpha, "\n")
+cat("Best Lambda:", best_lambda, "\n")
+cat("Mean Squared Error (MSE):", mse, "\n")
+cat("R-squared:", r_squared, "\n")
+cat("Number of Non-Zero Coefficients:", best_result$NonZero, "\n")
+
+# Save the selected genes
+selected_genes <- which(coef(final_elastic_net_model) != 0)
+cat("Selected genes (non-zero coefficients):\n", selected_genes, "\n")
+
+
+
+
