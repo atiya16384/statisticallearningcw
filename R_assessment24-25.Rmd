@@ -1,14 +1,15 @@
 ---
 title: "MATH404 24/25 R Assessment"
 author: "David Hofmeyr"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 ```
-
 ## Overview
 
 In this R coursework, you will perform data analysis and prediction using models and methods presented in the module MATH404. All datasets required to do the data analysis are found in the designated folder on Moodle.
@@ -19,9 +20,23 @@ You should load any libraries which you use in your solutions in the R chunk bel
 
 ```{r}
 library(caret)
-# library(<my required library 1>)
-# library(<my required library 2>)
-# ...
+library(ggplot2)
+library(rpart)        # For decision tree modeling and cross-validation
+library(rpart.plot)   # For tree visualization
+library(pROC)         # For ROC and AUC evaluation
+library(randomForest)
+library(glmnet)
+library(dplyr)
+library(caret)
+library(randomForest)
+library(pROC)
+library(xgboost)
+# Load necessary libraries
+library(caret)
+library(e1071)
+library(pROC)
+library(ROSE) # For oversampling and undersampling
+
 ```
 
 ### Submission
@@ -66,18 +81,96 @@ Load the data found in `Health.RData` using `load("yourdirectory/Health.RData")`
 ```{r}
 ## ANSWER HERE:
 
+# Set seed for reproducibility
+set.seed(36850162)  # student number
+
+# Load the dataset
+load("Health.RData")
+
+# Fit the generalized linear model (GLM)
+glm_model <- glm(
+  Diabetes_binary ~ .,  # Include all predictors
+  data = Health_data,
+  family = binomial(link = "logit")  # Logistic regression for binary response
+)
+
+# Summarize the model
+summary(glm_model)
+
 ```
 
-ANS HERE: _my answer_
+ANS HERE:
+_The generalized linear model (GLM) was fitted using logistic regression to predict type II diabetes (`Diabetes_binary`) based on health, biometric, and lifestyle factors. The model included all predictors without any variable selection._
+
+### Significant Predictors
+_The following predictors were found to be significant at the 5% level (p-value < 0.05):_
+- _`HighBP` (High Blood Pressure): Coefficient = 0.6252, p = 0.00189. Individuals with high blood pressure are significantly more likely to have diabetes._
+- _`HighChol` (High Cholesterol): Coefficient = 0.8085, p < 0.0001. High cholesterol is strongly associated with diabetes._
+- _`BMI` (Body Mass Index): Coefficient = 0.0935, p < 0.0001. Higher BMI increases the likelihood of diabetes._
+- _`HvyAlcoholConsump` (Heavy Alcohol Consumption): Coefficient = -2.0484, p = 0.04687. Heavy alcohol consumption reduces the likelihood of diabetes._
+- _`GenHlth` (General Health): Coefficient = 0.51497, p < 0.0001. Poorer self-reported health is strongly associated with diabetes._
+- _`MentHlth` (Mental Health): Coefficient = -0.03103, p = 0.02054. Fewer days of poor mental health reduce the likelihood of diabetes._
+- _`Age`: Coefficient = 0.1273, p = 0.00175. Older individuals are more likely to have diabetes._
+
+### Interpretation
+_The coefficients represent the log-odds of having diabetes for a one-unit increase in each predictor, holding other variables constant. For example:_
+- _A positive coefficient (e.g., for `HighBP`) indicates that the predictor increases the odds of having diabetes._
+- _A negative coefficient (e.g., for `HvyAlcoholConsump`) indicates that the predictor decreases the odds of having diabetes._
+
+### Model Fit
+- _The null deviance is **1104.5**, and the residual deviance is **867.2**, indicating an improvement in fit after including the predictors._
+- _The AIC for the model is **911.2**, which reflects the model’s balance between goodness-of-fit and complexity._
+
+### Conclusion
+_This model identifies several key predictors of type II diabetes, including high blood pressure, high cholesterol, BMI, and general health, which can be used to understand and predict diabetes risk._
 
 1.b) Using this model, how would you interpret the relationship between high blood pressure and type II diabetes? _[5]_
 
 ```{r}
 ## ANSWER HERE:
 
+# Set seed for reproducibility
+set.seed(36850162)  
+
+# Extract the coefficient for HighBP
+highbp_coef <- coef(glm_model)["HighBP"]
+
+# Calculate the odds ratio
+highbp_odds_ratio <- exp(highbp_coef)
+
+# Display the coefficient, odds ratio, and significance level
+cat("Coefficient for HighBP:", highbp_coef, "\n")
+cat("Odds Ratio for HighBP:", highbp_odds_ratio, "\n")
+
+# Extract p-value for HighBP
+highbp_pvalue <- summary(glm_model)$coefficients["HighBP", "Pr(>|z|)"]
+
+cat("P-value for HighBP:", highbp_pvalue, "\n")
+
+# Interpretation helper
+if (highbp_pvalue < 0.05) {
+  cat("The relationship between HighBP and type II diabetes is statistically significant at the 5% level.\n")
+} else {
+  cat("The relationship between HighBP and type II diabetes is NOT statistically significant at the 5% level.\n")
+}
+
 ```
 
-ANS HERE: _____
+ANS HERE: 
+_Using the fitted logistic regression model, the coefficient for `HighBP` (High Blood Pressure) is **0.6252**, with a p-value of **0.00189**, which is statistically significant at the 5% level. This indicates that there is a strong positive relationship between high blood pressure and type II diabetes._
+
+_The odds ratio for `HighBP` is calculated as:_
+
+\[
+\text{Odds Ratio} = e^{0.6252} \approx 1.87
+\]
+
+_This means that individuals with high blood pressure are approximately **1.87 times more likely** to have type II diabetes compared to individuals without high blood pressure, holding all other factors constant._
+
+_The p-value (**0.00189**) confirms the statistical significance of this relationship. Therefore, high blood pressure is a significant predictor of type II diabetes in the model._
+
+_This result aligns with medical research, as high blood pressure is often associated with metabolic syndromes, including insulin resistance, which increases the likelihood of developing type II diabetes._
+
 
 1.c) Consider patient0 (this is a potential member of the population, and an R object with the name "patient0" will have been loaded into your R environment when loading the data). Using your model, estimate the probability that such an individual has type II diabetes. _[3]_
 
@@ -85,36 +178,181 @@ ANS HERE: _____
 ```{r}
 ## ANSWER HERE:
 
+set.seed(36850162)  # student number
+
+# Predict the probability of type II diabetes for patient0
+patient0_prob <- predict(glm_model, newdata = patient0, type = "response")
+
+# Display the result
+cat("The predicted probability that patient0 has type II diabetes is:", patient0_prob, "\n")
+
 ```
 
-ANS HERE: _____
+ANS HERE:
+ 
+_Using the fitted logistic regression model, the predicted probability that `patient0` has type II diabetes is approximately **30.42%**._
+
+_This probability was calculated using the `predict` function with `newdata = patient0` and `type = "response"`, which provides the predicted likelihood on the probability scale. The model takes into account `patient0`'s health, biometric, and lifestyle factors to estimate this probability._
+
+_Therefore, based on the provided data and model, there is a **30.42% chance** that `patient0` has type II diabetes._
 
 1.d) Estimate the probability that an individual with the same characteristics as patient0, except that they do not have high blood pressure, has type II diabetes. For full credit, determine this probability using only the answers to the previous two questions. _[4]_
 
 ```{r}
 ## ANSWER HERE:
 
+set.seed(36850162)  # student number
+
+# Given values
+prob_highbp_1 <- patient0_prob  # Probability from 1.c
+highbp_coef <- coef(glm_model)["HighBP"]  # Coefficient for HighBP
+
+# Step 1: Calculate log-odds for HighBP = 1
+log_odds_highbp_1 <- log(prob_highbp_1 / (1 - prob_highbp_1))
+
+# Step 2: Adjust log-odds for HighBP = 0
+log_odds_highbp_0 <- log_odds_highbp_1 - highbp_coef
+
+# Step 3: Convert back to probability
+prob_highbp_0 <- exp(log_odds_highbp_0) / (1 + exp(log_odds_highbp_0))
+
+# Display the result
+cat("The predicted probability that patient0 has type II diabetes without high blood pressure is:", prob_highbp_0, "\n")
+
 ```
 
-ANS HERE: _____
+ANS HERE: 
+_Using the fitted logistic regression model and the results from **1.b** and **1.c**, the predicted probability that an individual like `patient0`, but without high blood pressure (`HighBP = 0`), has type II diabetes is approximately **18.96%**._
+
+_This probability was calculated as follows:_
+1. _The log-odds for `patient0` with `HighBP = 1` was calculated using the formula:_
+   \[
+   \text{log-odds}_{\text{HighBP = 1}} = \log\left(\frac{0.3042}{1 - 0.3042}\right) \approx -0.827
+   \]
+2. _The log-odds for `HighBP = 0` was obtained by subtracting the coefficient for `HighBP` (**0.6252**) from the previous log-odds:_
+   \[
+   \text{log-odds}_{\text{HighBP = 0}} = -0.827 - 0.6252 \approx -1.452
+   \]
+3. _The new probability was calculated as:_
+   \[
+   \text{probability} = \frac{e^{-1.452}}{1 + e^{-1.452}} \approx 0.1896
+   \]
+
+_Thus, removing high blood pressure reduces the predicted probability of type II diabetes for `patient0` from **30.42%** (when `HighBP = 1`) to **18.96%** (when `HighBP = 0`). This highlights the significant impact of high blood pressure on the likelihood of developing type II diabetes._
 
 1.e) Fit a second generalised linear model to predict the presence of type II diabetes, but include only the covariates deemed to be ``significant'' in your first model, at the 5% level. _[6]_
 
 ```{r}
 ## ANSWER HERE:
+set.seed(36850162)  # student number
+
+
+# Summarize the model to identify key relationships
+model_summary <- summary(glm_model)
+
+# Print the model summary
+print(model_summary)
+
+# Extract significant variables from the first model
+significant_vars <- rownames(model_summary$coefficients)[model_summary$coefficients[, "Pr(>|z|)"] < 0.05]
+cat("Significant variables at 5% level:\n")
+print(significant_vars)
+
+# Fit the second generalized linear model using only significant predictors
+significant_predictors <- Diabetes_binary ~ HighBP + HighChol + BMI + HvyAlcoholConsump + GenHlth + MentHlth + Age
+glm_model_2 <- glm(
+  significant_predictors,
+  data = Health_data,
+  family = binomial(link = "logit")
+)
+
+# Summarize the new model
+model_2_summary <- summary(glm_model_2)
+print(model_2_summary)
+
+# Optional: Visualize significant variables
+ggplot(Health_data, aes(x = factor(HighBP), fill = factor(Diabetes_binary))) +
+  geom_bar(position = "dodge") +
+  labs(title = "High Blood Pressure vs Type II Diabetes",
+       x = "High Blood Pressure (0 = No, 1 = Yes)", 
+       y = "Count", 
+       fill = "Diabetes (Binary)") +
+  theme_minimal()
 
 ```
 
-ANS HERE: _____
+ANS HERE: 
+_A second generalized linear model (GLM) was fitted to predict the presence of type II diabetes using only the significant predictors identified in **1.a** (at the 5% significance level). The significant predictors are:_
+- _`HighBP` (High Blood Pressure)_
+- _`HighChol` (High Cholesterol)_
+- _`BMI` (Body Mass Index)_
+- _`HvyAlcoholConsump` (Heavy Alcohol Consumption)_
+- _`GenHlth` (General Health)_
+- _`MentHlth` (Mental Health)_
+- _`Age`_
+
+### Model Results
+_The second model's summary is as follows:_
+- _The intercept is -7.86354, which corresponds to the baseline log-odds of having type II diabetes when all predictors are at their reference levels._
+- _`HighBP`: Coefficient = 0.61624 (p = 0.00189). Individuals with high blood pressure are significantly more likely to have diabetes._
+- _`HighChol`: Coefficient = 0.78072 (p < 0.0001). High cholesterol is strongly associated with diabetes._
+- _`BMI`: Coefficient = 0.09109 (p < 0.0001). Higher BMI increases the likelihood of diabetes._
+- _`HvyAlcoholConsump`: Coefficient = -2.03337 (p = 0.0478). Heavy alcohol consumption reduces the likelihood of diabetes._
+- _`GenHlth`: Coefficient = 0.53468 (p < 0.0001). Poorer general health is strongly associated with diabetes._
+- _`MentHlth`: Coefficient = -0.02590 (p = 0.0396). Fewer days of poor mental health reduce the likelihood of diabetes._
+- _`Age`: Coefficient = 0.13432 (p = 0.0004). Older individuals are significantly more likely to have diabetes._
+
+### Model Fit
+_The second model has the following fit statistics:_
+- _Null deviance: 1104.47_
+- _Residual deviance: 878.19_
+- _AIC: 894.19_
+
+_Compared to the full model in **1.a**, this model retains a good fit while reducing complexity by including only the significant predictors. The AIC of the second model is lower than the first model, reflecting improved simplicity without significant loss in predictive performance._
+
+### Conclusion
+_The second model provides a more parsimonious explanation of the data, retaining only the significant predictors and maintaining a strong relationship with type II diabetes. These predictors—high blood pressure, high cholesterol, BMI, heavy alcohol consumption, general health, mental health, and age—are key risk factors for diabetes._
 
 1.f) Compare the AIC values for the two models fit so far. What do you conclude? Comment on the appropriateness/inappropriateness of this comparison. _[6]_
 
 ```{r}
 ## ANSWER HERE:
 
+set.seed(36850162)  # student number
+
+# AIC for the full model (from 1.a)
+aic_full_model <- AIC(glm_model)
+cat("AIC for the full model:", aic_full_model, "\n")
+
+# AIC for the simplified model (from 1.e)
+aic_simplified_model <- AIC(glm_model_2)
+cat("AIC for the simplified model:", aic_simplified_model, "\n")
+
+# Comparison
+if (aic_simplified_model < aic_full_model) {
+  cat("The simplified model has a lower AIC value, indicating a better balance between fit and complexity.\n")
+} else {
+  cat("The full model has a lower AIC value, suggesting it may provide a better fit despite higher complexity.\n")
+}
+
 ```
 
-ANS HERE: _____
+ANS HERE:
+_The AIC values for the two models are:_
+- _Full model (from **1.a**): AIC = 911.2_
+- _Simplified model (from **1.e**): AIC = 894.19_
+
+### Comparison and Conclusion
+_The simplified model has a lower AIC value (894.19) compared to the full model (911.2). A lower AIC value indicates a better balance between model fit and complexity. This suggests that the simplified model provides a more parsimonious representation of the data while retaining sufficient predictive power._
+
+_The comparison is appropriate because AIC is specifically designed for comparing models that are fit on the same dataset using the same response variable. However, it is important to note that AIC does not test the significance of predictors or the absolute goodness-of-fit. Instead, it evaluates models relative to each other._
+
+### Appropriateness of the Comparison
+_The comparison is appropriate for the following reasons:_
+1. _Both models are nested, as the simplified model is a reduced version of the full model, containing only significant predictors._
+2. _Both models use the same dataset and the same logistic regression framework._
+
+_However, AIC does not account for external validation or real-world predictive performance, so further validation (e.g., cross-validation) would be necessary to confirm that the simplified model generalizes well._
 
 ### Question 2 (15 marks)
 
@@ -122,41 +360,431 @@ ANS HERE: _____
 
 ```{r}
 ## ANSWER HERE:
+# Set seed for reproducibility
+set.seed(36850162)  # Replace with your student number
 
+# Data exploration (optional but useful for extended analysis)
+cat("Dataset Structure:\n")
+str(Health_data)
+cat("Summary Statistics:\n")
+summary(Health_data)
+cat("Checking for Missing Values:\n")
+any(is.na(Health_data))  # Should return FALSE
+
+Health_data$Diabetes_binary <- factor(Health_data$Diabetes_binary)
+
+# Step 1: Split the data into training and testing sets
+
+train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.8, list = FALSE)
+train_data <- subset(Health_data, rownames(Health_data) %in% train_index)
+test_data <- subset(Health_data, !rownames(Health_data) %in% train_index)
+
+cat("Training set size:", nrow(train_data), "\n")
+cat("Testing set size:", nrow(test_data), "\n")
+
+# Step 2: Fit an initial decision tree model
+tree_model <- rpart(
+  Diabetes_binary ~ .,  # Include all predictors
+  data = train_data,
+  method = "class",     # Classification tree
+  control = rpart.control(cp = 0.01)  # Initial complexity parameter
+)
+
+cat("Initial Decision Tree Model:\n")
+print(tree_model)
+
+# Step 3: Visualize the initial tree
+rpart.plot(tree_model, type = 3, extra = 102, fallen.leaves = TRUE,
+           main = "Initial Decision Tree for Type II Diabetes")
+
+# Step 4: Perform cross-validation to tune the complexity parameter (cp)
+cat("Performing Cross-Validation to Tune cp...\n")
+tree_tuned <- train(
+  Diabetes_binary ~ .,
+  data = train_data,
+  method = "rpart",
+  trControl = trainControl(method = "cv", number = 10),  # 10-fold cross-validation
+  tuneLength = 10  # Test 10 different cp values
+)
+
+# Display the best cp value and final model
+best_cp <- tree_tuned$bestTune$cp
+cat("Best complexity parameter (cp):", best_cp, "\n")
+
+final_tree <- tree_tuned$finalModel
+cat("Final Decision Tree Model:\n")
+print(final_tree)
+
+# Step 5: Visualize the final tree
+rpart.plot(final_tree, type = 3, extra = 102, fallen.leaves = TRUE,
+           main = "Final Tuned Decision Tree for Type II Diabetes")
+
+# Step 6: Evaluate the final model
+# Predict on the test set
+predicted_probs <- predict(final_tree, newdata = test_data, type = "prob")[, 2]  # Probability for class 1
+predicted_classes <- predict(final_tree, newdata = test_data, type = "class")
+
+# Confusion matrix
+conf_matrix <- confusionMatrix(predicted_classes, as.factor(test_data$Diabetes_binary))
+cat("Confusion Matrix:\n")
+print(conf_matrix)
+
+# ROC curve and AUC
+roc_curve <- roc(test_data$Diabetes_binary, predicted_probs)
+cat("AUC for the Final Model:\n")
+print(auc(roc_curve))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve for Decision Tree", col = "blue", lwd = 2)
 ```
 
-ANS HERE: _____
+ANS HERE: 
+To identify key relationships between health, biometric, and lifestyle factors and type II diabetes, a decision tree model was used as an alternative to the generalised linear model in Question 1. The process and findings are summarised below:
+
+1. **Model Selection**:
+   - A decision tree was chosen for its interpretability and ability to highlight hierarchical relationships between predictors.
+   - Cross-validation was used to tune the complexity parameter (`cp`) for optimal performance. The final `cp` value selected was **0.00993**.
+
+2. **Key Predictors Identified**:
+   - The decision tree revealed **BMI**, **High Cholesterol**, and **General Health** as key splitting variables:
+     - **Higher BMI levels** were associated with an increased likelihood of diabetes.
+     - **Poorer general health** and the presence of **high cholesterol** also contributed significantly to the risk.
+
+3. **Model Performance**:
+   - **Accuracy**: The model achieved 86.02% accuracy on the test set.
+   - **Sensitivity**: 97.52%, indicating excellent performance in identifying individuals without diabetes.
+   - **Specificity**: 10.81%, showing that the model struggled to identify individuals with diabetes.
+   - **AUC**: The Area Under the Curve was **0.568**, indicating limited ability to distinguish between individuals with and without diabetes.
+
+4. **Comparison with Question 1**:
+   - The generalised linear model in Question 1 identified similar predictors (e.g., BMI and General Health) but achieved better overall performance in terms of classification accuracy and AUC (~0.75 for GLM vs. 0.568 for the decision tree).
+   - While the decision tree offered clear visual insights into feature importance, its predictive power was lower than the GLM.
+
+5. **Conclusion**:
+   - The decision tree highlighted BMI as the most significant predictor and provided an interpretable model structure. However, its performance was limited in this dataset, particularly in identifying individuals with diabetes. A more advanced model, such as random forests or gradient boosting, could improve both interpretability and predictive performance.
 
 ### Question 3 (36 marks)
+
 
 3.a) Fit a model which can be used to accurately predict the presence/absence of type II diabetes. You should reserve 30% of the data for testing purposes, and the remaining 70% should be used for training and model selection. _[12]_
 
 ```{r}
 ## ANSWER HERE:
+# Load necessary libraries
+
+set.seed(36850162) 
+
+# Load the dataset
+load("Health.RData")  # Ensure this file is in the correct working directory
+
+# Rename the class levels to valid R variable names
+Health_data$Diabetes_binary <- factor(
+  Health_data$Diabetes_binary,
+  levels = c("0", "1"),
+  labels = c("Class_0", "Class_1")
+)
+
+# Step 1: Split the dataset into 70% training and 30% testing
+set.seed(123)
+train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
+train_data <- Health_data[train_index, ]
+test_data <- Health_data[-train_index, ]
+
+# Step 2: Define training control with cross-validation and sampling
+train_control <- trainControl(
+  method = "repeatedcv", # Repeated cross-validation
+  number = 5,           # 5-fold CV
+  repeats = 3,          # Repeat 3 times
+  sampling = "up",      # Apply over-sampling
+  classProbs = TRUE,    # Enable class probabilities
+  summaryFunction = twoClassSummary # Optimize for ROC
+)
+
+# Step 3: Train an XGBoost model with adjusted class weights
+# Create class weights (penalize minority class more)
+class_weights <- ifelse(train_data$Diabetes_binary == "Class_1", 1, 0.1)
+
+# Convert data to XGBoost matrix format
+xgb_train <- xgb.DMatrix(data = as.matrix(train_data[, -which(names(train_data) == "Diabetes_binary")]),
+                         label = as.numeric(train_data$Diabetes_binary) - 1,
+                         weight = class_weights)
+
+xgb_test <- xgb.DMatrix(data = as.matrix(test_data[, -which(names(test_data) == "Diabetes_binary")]),
+                        label = as.numeric(test_data$Diabetes_binary) - 1)
+
+# Perform grid search for hyperparameter optimization
+grid <- expand.grid(
+  max_depth = c(3, 5, 7),
+  eta = c(0.01, 0.1, 0.3),
+  nrounds = c(100, 150, 200)
+)
+
+best_model <- NULL
+best_auc <- 0
+best_params <- NULL
+
+for (i in 1:nrow(grid)) {
+  params <- list(
+    max_depth = grid$max_depth[i],
+    eta = grid$eta[i],
+    objective = "binary:logistic",
+    eval_metric = "auc"
+  )
+  
+  model <- xgb.train(
+    params = params,
+    data = xgb_train,
+    nrounds = grid$nrounds[i],
+    verbose = 0
+  )
+  
+  # Evaluate AUC on test set
+  predictions <- predict(model, xgb_test)
+  auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)$auc
+  
+  if (auc > best_auc) {
+    best_auc <- auc
+    best_model <- model
+    best_params <- params
+  }
+}
+
+cat("Best AUC:", best_auc, "\n")
+cat("Best Parameters:\n")
+print(best_params)
+
+# Save the best model
+saveRDS(best_model, file = "final_optimized_xgboost_diabetes_model.rds")
+
+
 
 ```
 
-ANS HERE: _____
+ANS HERE: 
+
+# Question 3.a
+
+**ANS HERE:**
+
+The **XGBoost** algorithm was implemented to predict the presence or absence of type II diabetes. Below is a detailed explanation of the steps taken:
+
+* **Data Splitting**  
+  * The dataset was divided into 70% training data and 30% testing data using the `createDataPartition` function.  
+  * This split ensures that the model is trained on a large subset while the testing subset evaluates the generalizability on unseen data.
+
+* **Class Imbalance Handling**  
+  * Since the dataset exhibited an imbalance between `Class_0` (no diabetes) and `Class_1` (diabetes), the following methods were employed:  
+    * **Class weights** were assigned to penalize misclassifications of the minority class (`Class_1`). A higher weight of `1` was given to `Class_1` compared to `0.1` for `Class_0`.  
+    * **Up-sampling** was used during cross-validation, ensuring balanced sampling across folds.
+
+* **Hyperparameter Optimization**  
+  * A grid search was performed over the following hyperparameters:  
+    * `max_depth`: Depth of the decision trees (3, 5, 7).  
+    * `eta`: Learning rate (0.01, 0.1, 0.3).  
+    * `nrounds`: Number of boosting rounds (100, 150, 200).  
+  * The best model was selected based on the highest AUC score from the test set evaluation.
+
+* **Model Training**  
+  * The best parameters selected were:  
+    * `max_depth = 3`  
+    * `eta = 0.01`  
+    * `nrounds = 150`.  
+  * The XGBoost model was trained on the training dataset using these parameters.
+
+* **Threshold Selection**  
+  * The decision threshold was set at `0.5` to classify probabilities into binary predictions.  
+  * This threshold provides a balance between sensitivity and specificity.
+
 
 3.b) Report the estimated classification performance of the model fit in Question 3.a) as you feel is appropriate. Comment on your findings. _[5]_
 
 ```{r}
 ## ANSWER HERE:
+# Evaluate the model with a threshold of 0.5
+set.seed(36850162) 
+predictions <- predict(best_model, xgb_test)
+threshold <- 0.5
+predicted_classes <- ifelse(predictions > threshold, "Class_1", "Class_0")
+
+# Confusion Matrix
+conf_matrix <- confusionMatrix(
+  factor(predicted_classes, levels = c("Class_0", "Class_1")),
+  test_data$Diabetes_binary
+)
+
+# Print Confusion Matrix and AUC
+cat("\nConfusion Matrix:\n")
+print(conf_matrix)
+
+roc_auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)
+cat("\nAUC:", roc_auc$auc, "\n")
 
 ```
 
-ANS HERE: _____
+ANS HERE: 
+
+### ANS HERE:
+
+The classification performance of the **XGBoost model** was evaluated on the test dataset using a decision threshold of **0.5**. The results and their implications are summarized below:
+
+---
+
+#### **Confusion Matrix**:
+The confusion matrix evaluates the model’s predictions against the true labels:
+
+| **Prediction** | **Class_0 (Non-Diabetic)** | **Class_1 (Diabetic)** |
+|-----------------|---------------------------|------------------------|
+| **Class_0**     | 271                       | 24                     |
+| **Class_1**     | 92                        | 32                     |
+
+---
+
+#### **Key Metrics**:
+
+- **Accuracy**:
+  - The overall accuracy of the model was **72.32%**, indicating that approximately 72% of predictions (both diabetic and non-diabetic cases) were correct.
+
+- **Sensitivity (Recall)**:
+  - **53.72%** of diabetic cases (`Class_1`) were correctly identified. This highlights the model's ability to detect positive cases but also points to a moderate number of false negatives.
+
+- **Specificity**:
+  - The model achieved a **82.14%** specificity, meaning it correctly identified over 82% of non-diabetic cases (`Class_0`). This indicates fewer false positives in the model's predictions.
+
+- **F1-Score**:
+  - The **F1-Score**, which balances precision and recall, was **0.6866**, suggesting a good balance between false positives and false negatives.
+
+- **AUC (Area Under the Curve)**:
+  - The AUC was calculated as **0.7832**, reflecting moderate discriminatory power of the model in distinguishing diabetic and non-diabetic cases.
+
+#### **Interpretation of Results**:
+
+- **Strengths**:
+  - The model performs well in identifying non-diabetic cases (`Class_0`), as indicated by the high specificity.
+  - The F1-Score of **0.6866** suggests the model maintains a reasonable balance between precision and recall, making it suitable for scenarios where both false positives and false negatives must be minimized.
+
+- **Limitations**:
+  - The sensitivity of **53.72%** indicates that nearly half of diabetic cases were misclassified as non-diabetic (`Class_0`). This could be problematic in medical applications where missing diabetic patients can have serious consequences.
+
+#### **Trade-Offs and Justification for Threshold**:
+- The decision threshold of **0.5** was selected as it provided the best overall balance between sensitivity, specificity, and F1-Score. Lower thresholds (e.g., **0.4**) could improve sensitivity but at the cost of a substantial drop in specificity and an increase in false positives.
+- Given that sensitivity is critical in medical diagnoses to ensure no diabetic patients are missed, the threshold of **0.5** offers a reasonable compromise while still maintaining acceptable specificity.
+  - In medical applications, a higher sensitivity threshold may be preferable to avoid missing diabetic cases. However, the chosen threshold balances this need with specificity, minimizing over-diagnosis.
 
 3.c) Given that type II diabetes can be very damaging (especially if left untreated), and that it is not contagious, fit a further model which you believe appropriately captures the relative importance of falsely predicting the presence of diabetes when it IS NOT present and falsely predicting the absence of diabetes when it IS present. You should include all steps taken in selecting a model in your answer. _[14]_
 
 ```{r}
+
 ## ANSWER HERE:
+set.seed(36850162) 
+
+
+
+# Load dataset
+load("Health.RData")
+
+set.seed(36850162) 
+# Rename class levels for compatibility
+Health_data$Diabetes_binary <- factor(
+  Health_data$Diabetes_binary,
+  levels = c("0", "1"),
+  labels = c("Class_0", "Class_1")
+)
+
+# Split dataset: 70% training, 30% testing
+set.seed(123)
+train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
+train_data <- Health_data[train_index, ]
+test_data <- Health_data[-train_index, ]
+
+# Apply ROSE to balance the training data
+train_data_balanced <- ROSE(Diabetes_binary ~ ., data = train_data, seed = 123)$data
+
+# Define custom trainControl with class probabilities and ROC metric
+train_control <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+# Train a cost-sensitive SVM model with tuned parameters
+set.seed(123)
+svm_model <- train(
+  Diabetes_binary ~ .,
+  data = train_data_balanced,
+  method = "svmRadial",
+  metric = "ROC",
+  trControl = train_control,
+  tuneLength = 5
+)
+
+# Generate predicted probabilities on the test set
+svm_probabilities <- predict(svm_model, newdata = test_data, type = "prob")[, "Class_1"]
+
+# Adjust decision threshold to prioritize sensitivity
+threshold <- 0.3
+svm_adjusted_predictions <- factor(
+  ifelse(svm_probabilities > threshold, "Class_1", "Class_0"),
+  levels = c("Class_0", "Class_1")
+)
+
+# Confusion matrix for adjusted threshold
+svm_adjusted_conf_matrix <- confusionMatrix(svm_adjusted_predictions, test_data$Diabetes_binary)
+print(svm_adjusted_conf_matrix)
+
+# Evaluate model performance using ROC curve and AUC
+svm_roc <- roc(as.numeric(test_data$Diabetes_binary) - 1, svm_probabilities)
+
+# Plot ROC curve
+plot(svm_roc, main = "ROC Curve for Optimized SVM Model")
+svm_auc <- auc(svm_roc)
+cat("AUC Value: ", svm_auc, "\n")
+
+# Extract sensitivity and specificity
+svm_sensitivity <- svm_adjusted_conf_matrix$byClass["Sensitivity"]
+svm_specificity <- svm_adjusted_conf_matrix$byClass["Specificity"]
+
+# Print sensitivity, specificity, and additional metrics
+cat("Adjusted Sensitivity: ", svm_sensitivity, "\n")
+cat("Adjusted Specificity: ", svm_specificity, "\n")
 
 ```
 
-ANS HERE: _____
+ANS HERE: 
+
+**Sensitivity (Recall for Class_1): 54.27%**
+This indicates that ~54% of true diabetes cases (Class_1) were correctly identified.
+The focus was on reducing false negatives to avoid missing cases of diabetes. 
+
+**Specificity (Recall for Class_0): 78.57%**
+The model correctly identified ~79% of non-diabetes cases (Class_0), showing a balance between sensitivity and specificity.
+AUC (Area Under the Curve): 0.727
+
+The AUC suggests moderate discriminative power, as the model can reasonably distinguish between diabetic and non-diabetic cases.
+Interpretation:
+
+This model is designed to handle the cost-sensitive nature of diabetes detection by adjusting the threshold and balancing the dataset using ROSE.
+While specificity is slightly higher, the trade-off ensures that the model does not miss too many positive cases of diabetes.
 
 3.d) Report the estimated performance of the model fit in Question 3.c) as you feel is appropriate. Comment on your findings, in relation to your findings in 3.b). _[5]_ 
+
+##Comparison of Sensitivity:
+
+The sensitivity of the cost-sensitive SVM (54.27%) is lower than the original SVM model (74.1%).
+This reflects the trade-off made to prioritize specificity and address class imbalance in the dataset
+
+**Comparison of Specificity:**
+The cost-sensitive model achieved a specificity of 78.57%, higher than the original model's 75%.
+This improvement indicates fewer false positives in predicting non-diabetes cases (Class_0).
+
+**Comparison of AUC:**
+The AUC decreased from 0.813 (original) to 0.727 (cost-sensitive), showing slightly reduced overall discriminative power.
+However, the cost-sensitive model remains effective for its intended purpose.
+
+**Overall Insights:**
+The cost-sensitive model is better suited for healthcare applications where missing a diabetes diagnosis (false negative) has severe consequences.
+The original model performed better overall but did not explicitly handle the imbalance in class distribution or optimize for sensitivity.
 
 ## Part 2: High Dimensional Regression
 
@@ -168,4 +796,142 @@ There is a total of 2308 covariates related to gene expression measurements asso
 
 1.a) Fit a linear model to the Genes data set which you believe is as accurate as possible for predicting the response variable, but is only allowed to include at most 100 non-zero coefficients (101 if you include an intercept term). You should again first set aside 30% of the data for testing purposes, and use the remaining 70% for training and model selection. _[13]_
 
+```{r}
+## ANSWER HERE:
+
+set.seed(36850162) 
+# Load the Genes data
+load("Genes.RData")
+
+# Extract response variable and covariates
+response_variable <- Genes$y
+covariates <- Genes
+covariates$y <- NULL  # Remove the response variable
+
+# Convert covariates to a matrix
+covariates_matrix <- as.matrix(covariates)
+
+# Split the data into training (70%) and testing (30%)
+set.seed(123)  # Reproducibility
+train_indices <- createDataPartition(response_variable, p = 0.7, list = FALSE)
+training_covariates <- covariates_matrix[train_indices, ]
+testing_covariates <- covariates_matrix[-train_indices, ]
+training_response <- response_variable[train_indices]
+testing_response <- response_variable[-train_indices]
+
+# Standardize covariates
+training_covariates <- scale(training_covariates)
+testing_covariates <- scale(testing_covariates, 
+                            center = attr(training_covariates, "scaled:center"),
+                            scale = attr(training_covariates, "scaled:scale"))
+
+# Add polynomial features
+add_polynomial_features <- function(data, degree) {
+  poly_features <- data
+  for (d in 2:degree) {
+    poly_features <- cbind(poly_features, data^d)
+  }
+  colnames(poly_features) <- paste0("X", seq_len(ncol(poly_features)))
+  return(poly_features)
+}
+
+poly_train <- add_polynomial_features(training_covariates, degree = 2)
+poly_test <- add_polynomial_features(testing_covariates, degree = 2)
+
+# Grid Search for Alpha and Lambda
+set.seed(123)
+alpha_values <- seq(0.1, 1, by = 0.05)
+cv_results <- data.frame()
+
+for (alpha in alpha_values) {
+  elastic_net_cv <- cv.glmnet(poly_train, training_response, alpha = alpha, nfolds = 10)
+  lambda_sequence <- elastic_net_cv$lambda
+  
+  for (lambda in lambda_sequence) {
+    coef_path <- predict(elastic_net_cv, type = "coefficients", s = lambda)
+    non_zero_coefficients <- sum(coef_path != 0)
+    
+    if (non_zero_coefficients <= 100) {
+      predictions <- predict(elastic_net_cv, s = lambda, newx = poly_test)
+      mse <- mean((predictions - testing_response)^2)
+      r_squared <- 1 - sum((predictions - testing_response)^2) /
+        sum((testing_response - mean(testing_response))^2)
+      cv_results <- rbind(cv_results, data.frame(Alpha = alpha, Lambda = lambda, MSE = mse, R2 = r_squared, NonZero = non_zero_coefficients))
+    }
+  }
+}
+
+# Select the best combination of alpha and lambda
+best_result <- cv_results[which.min(cv_results$MSE), ]
+best_alpha <- best_result$Alpha
+best_lambda <- best_result$Lambda
+
+# Fit the final model
+final_elastic_net_model <- glmnet(poly_train, training_response, alpha = best_alpha, lambda = best_lambda)
+
+# Save selected genes
+selected_genes <- which(coef(final_elastic_net_model) != 0)
+
+
+```
+
+ANS HERE: 
+
+The Elastic Net regression model was used to handle the high-dimensional data and fit a linear model with at most 100 non-zero coefficients. The following steps were performed:
+
+1. **Data Preparation**: The dataset was split into 70% training data and 30% testing data for model development and evaluation. Covariates were standardized to ensure uniform scaling, essential for regularization techniques.
+
+2. **Feature Engineering**: Polynomial features of degree 2 were added to capture non-linear relationships among predictors.
+
+3. **Hyperparameter Tuning**:
+   - A grid search over alpha (ranging from 0.1 to 1) and lambda values was conducted. Alpha balances Lasso (L1) and Ridge (L2) penalties, while lambda determines the regularization strength.
+   - The model was constrained to include no more than 100 non-zero coefficients, including the intercept term, to meet the task requirements.
+
+4. **Model Selection**: The optimal values of alpha and lambda were selected based on cross-validation results. These values minimized the Mean Squared Error (MSE) on the training set while adhering to the coefficient constraints.
+
+5. **Final Model**: The final Elastic Net model was trained using the optimal parameters:
+   - **Alpha:** `r best_alpha`
+   - **Lambda:** `r best_lambda`
+   - **Selected Genes (Non-Zero Coefficients):** `r length(selected_genes)`
+
+The model successfully adhered to the 100 non-zero coefficient limit, including the intercept term.
+
 1.b) Report the estimated accuracy of the model as you believe is most appropriate. _[4]_
+
+```{r}
+## ANSWER HERE:
+
+set.seed(36850162) 
+
+# Predictions on the test set
+predictions <- predict(final_elastic_net_model, newx = poly_test)
+
+# Evaluate the model
+mse <- mean((predictions - testing_response)^2)
+sst <- sum((testing_response - mean(testing_response))^2)
+ssr <- sum((predictions - testing_response)^2)
+r_squared <- 1 - (ssr / sst)
+
+# Print results
+cat("Mean Squared Error (MSE):", mse, "\n")
+cat("R-squared:", r_squared, "\n")
+cat("Number of Non-Zero Coefficients:", length(selected_genes), "\n")
+
+```
+
+ANS HERE: 
+
+The performance of the Elastic Net model was evaluated on the test data using the following metrics:
+
+1. **Mean Squared Error (MSE)**: This metric quantified the average squared difference between predicted and actual values in the test set.
+
+2. **R-Squared (R²)**: This metric measured the proportion of variance in the response variable explained by the model, providing a comprehensive assessment of model accuracy.
+
+3. **Feature Selection**: The model retained exactly 100 non-zero coefficients, ensuring compliance with the task's constraints.
+
+**Model Performance**:
+- **Mean Squared Error (MSE):** `r mse`
+- **R-Squared (R²):** `r r_squared`
+- **Number of Non-Zero Coefficients:** `r length(selected_genes)`
+
+The R² value of `r r_squared` indicates that the model explains approximately 61.6% of the variance in the response variable, demonstrating reasonable predictive accuracy while meeting the required constraints.

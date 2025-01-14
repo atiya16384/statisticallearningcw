@@ -88,18 +88,12 @@ glm_model_2 <- glm(
   family = binomial(link = "logit")
 )
 
+
+
 # Summarize the new model
 model_2_summary <- summary(glm_model_2)
 print(model_2_summary)
 
-# Optional: Visualize significant variables
-ggplot(Health_data, aes(x = factor(HighBP), fill = factor(Diabetes_binary))) +
-  geom_bar(position = "dodge") +
-  labs(title = "High Blood Pressure vs Type II Diabetes",
-       x = "High Blood Pressure (0 = No, 1 = Yes)", 
-       y = "Count", 
-       fill = "Diabetes (Binary)") +
-  theme_minimal()
 
 set.seed(36850162)  # Replace with your student number
 
@@ -212,195 +206,154 @@ cat("Selected genes (non-zero coefficients):\n", selected_genes, "\n")
 
 
 
-
 # Load necessary libraries
 library(caret)
-library(randomForest)
 library(pROC)
 library(xgboost)
 
 # Load the dataset
-load("Health.RData")  # Ensure this file is in the correct working directory
+load("Health.RData")  # Ensure this file is in your working directory
 
-# Rename the class levels to valid R variable names
+# Check data structure
+str(Health_data)
+
+# Rename class levels to valid R names
 Health_data$Diabetes_binary <- factor(
   Health_data$Diabetes_binary,
   levels = c("0", "1"),
   labels = c("Class_0", "Class_1")
 )
 
-# Step 1: Split the dataset into 70% training and 30% testing
+# Split dataset: 70% training, 30% testing
 set.seed(123)
 train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
 train_data <- Health_data[train_index, ]
 test_data <- Health_data[-train_index, ]
 
-# Step 2: Define training control with cross-validation and sampling
+# TrainControl for sensitivity (use ROC optimization)
 train_control <- trainControl(
-  method = "repeatedcv", # Repeated cross-validation
-  number = 5,           # 5-fold CV
-  repeats = 3,          # Repeat 3 times
-  sampling = "up",      # Apply over-sampling
-  classProbs = TRUE,    # Enable class probabilities
-  summaryFunction = twoClassSummary # Optimize for ROC
+  method = "repeatedcv",
+  number = 5,
+  repeats = 3,
+  sampling = "up",  # Upsample to balance data
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
 )
 
-# Step 3: Train an XGBoost model with adjusted class weights
-# Create class weights (penalize minority class more)
-class_weights <- ifelse(train_data$Diabetes_binary == "Class_1", 1, 0.1)
-
-# Convert data to XGBoost matrix format
-xgb_train <- xgb.DMatrix(data = as.matrix(train_data[, -which(names(train_data) == "Diabetes_binary")]),
-                         label = as.numeric(train_data$Diabetes_binary) - 1,
-                         weight = class_weights)
-
-xgb_test <- xgb.DMatrix(data = as.matrix(test_data[, -which(names(test_data) == "Diabetes_binary")]),
-                        label = as.numeric(test_data$Diabetes_binary) - 1)
-
-# Perform grid search for hyperparameter optimization
-grid <- expand.grid(
-  max_depth = c(3, 5, 7),
-  eta = c(0.01, 0.1, 0.3),
-  nrounds = c(100, 150, 200)
+# Train XGBoost Model
+set.seed(123)
+xgb_model <- train(
+  Diabetes_binary ~ .,
+  data = train_data,
+  method = "xgbTree",
+  metric = "ROC",
+  trControl = train_control
 )
 
-best_model <- NULL
-best_auc <- 0
-best_params <- NULL
+# Evaluate Confusion Matrix
+xgb_predictions <- predict(xgb_model, newdata = test_data)
+conf_matrix <- confusionMatrix(xgb_predictions, test_data$Diabetes_binary)
+print(conf_matrix)
 
-for (i in 1:nrow(grid)) {
-  params <- list(
-    max_depth = grid$max_depth[i],
-    eta = grid$eta[i],
-    objective = "binary:logistic",
-    eval_metric = "auc"
-  )
-  
-  model <- xgb.train(
-    params = params,
-    data = xgb_train,
-    nrounds = grid$nrounds[i],
-    verbose = 0
-  )
-  
-  # Evaluate AUC on test set
-  predictions <- predict(model, xgb_test)
-  auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)$auc
-  
-  if (auc > best_auc) {
-    best_auc <- auc
-    best_model <- model
-    best_params <- params
-  }
-}
+# Adjust decision threshold for sensitivity
+xgb_probabilities <- predict(xgb_model, newdata = test_data, type = "prob")[, "Class_1"]
+threshold <- 0.4
+xgb_adjusted_predictions <- factor(ifelse(xgb_probabilities > threshold, "Class_1", "Class_0"),
+                                   levels = c("Class_0", "Class_1"))
 
-# Print the best parameters and AUC
-cat("Best AUC:", best_auc, "\n")
-cat("Best Parameters:\n")
-print(best_params)
+adjusted_conf_matrix <- confusionMatrix(xgb_adjusted_predictions, test_data$Diabetes_binary)
+print(adjusted_conf_matrix)
 
-# Step 4: Adjust decision threshold for sensitivity
-thresholds <- seq(0.3, 0.5, by = 0.05)
-metrics <- data.frame(Threshold = thresholds, Sensitivity = NA, Specificity = NA, F1 = NA)
+# Evaluate model performance using ROC curve and AUC
+xgb_roc <- roc(as.numeric(test_data$Diabetes_binary) - 1, xgb_probabilities)
 
-for (i in seq_along(thresholds)) {
-  threshold <- thresholds[i]
-  predicted_classes <- ifelse(predict(best_model, xgb_test) > threshold, "Class_1", "Class_0")
-  
-  conf_matrix <- confusionMatrix(
-    factor(predicted_classes, levels = c("Class_0", "Class_1")),
-    test_data$Diabetes_binary
-  )
-  
-  sensitivity <- conf_matrix$byClass["Sensitivity"]
-  specificity <- conf_matrix$byClass["Specificity"]
-  precision <- conf_matrix$byClass["Pos Pred Value"]
-  recall <- sensitivity
-  f1 <- 2 * (precision * recall) / (precision + recall)
-  
-  metrics[i, 2:4] <- c(sensitivity, specificity, f1)
-}
+# Plot ROC Curve
+plot(xgb_roc, main = "ROC Curve for XGBoost Model")
+auc_value <- auc(xgb_roc)
+cat("AUC Value: ", auc_value, "\n")
 
-print(metrics)
+# Sensitivity and Specificity
+sensitivity <- adjusted_conf_matrix$byClass["Sensitivity"]
+specificity <- adjusted_conf_matrix$byClass["Specificity"]
 
-# Save the best model
-saveRDS(best_model, file = "final_optimized_xgboost_diabetes_model.rds")
-cat("\nModel saved as 'final_optimized_xgboost_diabetes_model.rds'.\n")
+# Print Performance Metrics
+cat("Adjusted Sensitivity: ", sensitivity, "\n")
+cat("Adjusted Specificity: ", specificity, "\n")
+
 
 
 
 # Load necessary libraries
 library(caret)
+library(e1071)
 library(pROC)
+library(ROSE) # For oversampling and undersampling
 
-# Step 1: Load and preprocess the dataset
-load("Health.RData")  # Ensure this file is in the correct working directory
+# Load dataset
+load("Health.RData")
 
-# Rename the class levels to valid R variable names
+# Rename class levels for compatibility
 Health_data$Diabetes_binary <- factor(
   Health_data$Diabetes_binary,
   levels = c("0", "1"),
   labels = c("Class_0", "Class_1")
 )
 
-# Step 2: Split the dataset into 70% training and 30% testing
+# Split dataset: 70% training, 30% testing
 set.seed(123)
 train_index <- createDataPartition(Health_data$Diabetes_binary, p = 0.7, list = FALSE)
 train_data <- Health_data[train_index, ]
 test_data <- Health_data[-train_index, ]
 
-# Step 3: Implement weighted logistic regression to penalize false negatives
-best_auc <- 0
-best_model <- NULL
-best_weight <- NULL
-weights <- c(0.5, 1, 2, 5)  # Different weights for false negatives
+# Apply ROSE to balance the training data
+train_data_balanced <- ROSE(Diabetes_binary ~ ., data = train_data, seed = 123)$data
 
-for (weight in weights) {
-  # Assign weights for the training dataset
-  class_weights <- ifelse(train_data$Diabetes_binary == "Class_1", weight, 1)
-  
-  # Train a weighted logistic regression model
-  logistic_model <- glm(
-    Diabetes_binary ~ ., 
-    data = train_data, 
-    family = binomial(link = "logit"), 
-    weights = class_weights
-  )
-  
-  # Step 4: Evaluate the model
-  predictions <- predict(logistic_model, newdata = test_data, type = "response")
-  roc_obj <- roc(as.numeric(test_data$Diabetes_binary) - 1, predictions)
-  auc <- auc(roc_obj)
-  
-  # Store the best model
-  if (auc > best_auc) {
-    best_auc <- auc
-    best_model <- logistic_model
-    best_weight <- weight
-  }
-}
-
-# Print the best AUC and weight
-cat("Best AUC:", best_auc, "\n")
-cat("Best Weight:", best_weight, "\n")
-
-# Step 5: Adjust decision threshold for sensitivity
-threshold <- 0.4  # Lower threshold for increased sensitivity
-predicted_classes <- ifelse(predict(best_model, newdata = test_data, type = "response") > threshold, "Class_1", "Class_0")
-
-# Confusion Matrix
-conf_matrix <- confusionMatrix(
-  factor(predicted_classes, levels = c("Class_0", "Class_1")),
-  test_data$Diabetes_binary
+# Define custom trainControl with class probabilities and ROC metric
+train_control <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
 )
 
-# Print Confusion Matrix and AUC
-cat("\nConfusion Matrix:\n")
-print(conf_matrix)
+# Train a cost-sensitive SVM model with tuned parameters
+set.seed(123)
+svm_model <- train(
+  Diabetes_binary ~ .,
+  data = train_data_balanced,
+  method = "svmRadial",
+  metric = "ROC",
+  trControl = train_control,
+  tuneLength = 5
+)
 
-roc_auc <- roc(as.numeric(test_data$Diabetes_binary) - 1, predict(best_model, newdata = test_data, type = "response"))
-cat("\nAUC:", roc_auc$auc, "\n")
+# Generate predicted probabilities on the test set
+svm_probabilities <- predict(svm_model, newdata = test_data, type = "prob")[, "Class_1"]
 
-# Save the best model
-saveRDS(best_model, file = "weighted_logistic_regression_model_part_c.rds")
-cat("\nModel saved as 'weighted_logistic_regression_model_part_c.rds'.\n")
+# Adjust decision threshold to prioritize sensitivity
+threshold <- 0.3
+svm_adjusted_predictions <- factor(
+  ifelse(svm_probabilities > threshold, "Class_1", "Class_0"),
+  levels = c("Class_0", "Class_1")
+)
+
+# Confusion matrix for adjusted threshold
+svm_adjusted_conf_matrix <- confusionMatrix(svm_adjusted_predictions, test_data$Diabetes_binary)
+print(svm_adjusted_conf_matrix)
+
+# Evaluate model performance using ROC curve and AUC
+svm_roc <- roc(as.numeric(test_data$Diabetes_binary) - 1, svm_probabilities)
+
+# Plot ROC curve
+plot(svm_roc, main = "ROC Curve for Optimized SVM Model")
+svm_auc <- auc(svm_roc)
+cat("AUC Value: ", svm_auc, "\n")
+
+# Extract sensitivity and specificity
+svm_sensitivity <- svm_adjusted_conf_matrix$byClass["Sensitivity"]
+svm_specificity <- svm_adjusted_conf_matrix$byClass["Specificity"]
+
+# Print sensitivity, specificity, and additional metrics
+cat("Adjusted Sensitivity: ", svm_sensitivity, "\n")
+cat("Adjusted Specificity: ", svm_specificity, "\n")
